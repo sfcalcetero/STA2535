@@ -57,7 +57,7 @@ $$
 $$
 \log (\mu_{x,t}) = \beta_0+\beta_1 \log (q_{x,t}^{ref}) 
 $$
-### Method 3: Poisson GLM Including Interactions with Age and Calendar Year
+### Method 3: Including Interactions with Age and Calendar Year
 
 $$
 \log (\mu_{x,t}) = \beta_0+\beta_1 \log (q_{x,t}^{ref}) +\beta_2x+\beta_3t+\beta_4xt
@@ -182,7 +182,7 @@ sum(residuals_2^2) #Chi_2 Statistis
 ```
 
 
-### Method 3: Poisson GLM Including Interactions with Age and Calendar Year
+### Method 3: Including Interactions with Age and Calendar Year
 
 $$
 \log (\mu_{x,t}) = \beta_0+\beta_1 \log (q_{x,t}^{ref}) +\beta_2x
@@ -227,6 +227,7 @@ fit_4 <- gam(formula = Dx ~ I(log(q_ref))+s(x),
 
 #See estimation
 summary(fit_4)
+plot(fit_4)
 
 #Residual analysis qq-plot
 residuals_4 <- residuals(fit_4,type = "deviance")
