@@ -12,6 +12,8 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 # Health Insurance and Markov Chains
 
+***This is Section 7.7 of Computational Actuarial Science with R, Edited by Arthur Charpentier***
+
 This section deals with the application of discrete Markov chains to Health Insurance. Discrete Markov chains represent a class of stochastic processes defined on a discrete set of possible states characterized by:
 
 $$
