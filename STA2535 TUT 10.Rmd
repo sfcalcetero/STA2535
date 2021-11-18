@@ -1,0 +1,207 @@
+---
+title: "Health Insurance and Markov Chains"
+author: "Section 7.7 of Computational Actuarial Science with R, Edited by Arthur Charpentier"
+date: "18/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages('markovchain')
+
+```
+
+This section deals with the application of discrete Markov chains to Health Insurance. Discrete Markov chains represent a class of stochastic processes defined on a discrete set of possible states characterized by:
+
+$$
+P(X_{n+1}=x \vert X_1=x_1, \ldots,X_n=x_n) = P(X_{n+1}=x \vert X_n=x_n)
+$$
+
+A classical application of Markov chains in insurance lies in Health and Disability coverage pricing and reserving. Another notable actuarial application of Markov chains is no-claim discount and bonus-malus policyholders’ evolution within a portfolio. Daniel (n.d.) provides an introduction to Markov chains application in the insurance business, while Haberman & Pitacco (1999) and Deshmukh (2012) provide a broader overview of actuarial topics, like health insurance, on which Markov chains can be effectively applied.
+
+For a broader mathematical introduction, Ross (2009), Norris (1997), and Ching & Ng (2006) provide a good introduction to the topic.
+
+## Markov Chain in R  
+
+The R package markovchain, see (Spedicato 2013b), will be used throughout the chapter. The package vignettes provide much deeper detail on the package’s capatibilites to handle and manipulate discrete Markov chains within an R environment, as well as how to perform probabilitistic and statistical analyses on it.
+
+```{r}
+library(markovchain)
+```
+
+
+To show how to define a Markov chain within the package, let’s consider a critical illness model with three states: healthy (H), critically ill (I), and dead (D). A Markov chain with associated transition probabilities can be defined as follows:
+
+```{r}
+stateNames <- c("H","I","D")
+cimMc <- new("markovchain",states=stateNames,
+             transitionMatrix=matrix(c(0.92,0.05,0.03,
+                                       0.00,0.76,0.24,
+                                       0.00,0.00,1.00),
+                                     nrow=3, byrow=TRUE))
+cimMc
+```
+
+Various methods have been defined within the package to make probabilistic analysis easier, as the package vignettes reveal. For example, the probability that a subject initially healthy is dead in the fourth step is
+
+
+```{r}
+transitionProbability(cimMc^4, t0="H","D")
+```
+
+Identifying steady probabilities vectors and absorbing states is easy as well:
+
+```{r}
+steadyStates(cimMc)
+absorbingStates(cimMc)
+```
+
+To perform such calculations, the power method, defined for the markovchain S4 (see (Chambers & Hastie 1991) and Chapter 1) class has been used. Similarly, a plot method is available for the class, as Figure 7.3 displays, based on Csardi & Nepusz (2006).
+
+```{r}
+plot(cimMc)
+```
+
+If the transition probabilities between states vary by time, they can be modeled by non-homogeneous Markov chains, as the following example displays.
+
+### Example
+The status of residents in a Continuing Care Retirement Community (CCRC) is modeled by a nonhomogeneous Markov chain with three states: Independent Living (“H”), Health Center (“I”), and Gone (“D”). The transition probabilities are modeled in the following R code by Q0 , Q1 , . . . , Q3 .
+
+```{r}
+Q0 <- new("markovchain", 
+          states=stateNames,
+          transitionMatrix=matrix(c(0.7, 0.2, 0.1,
+                                    0.1, 0.6, 0.3,
+                                    0, 0, 1),
+                                  byrow=TRUE, nrow=3))
+
+Q1 <- new("markovchain",
+          states=stateNames,
+          transitionMatrix=matrix(c(0.5, 0.3, 0.2,
+                                    0, 0.4, 0.6,
+                                    0, 0, 1),
+                                  byrow=TRUE, nrow=3))
+
+Q2 <- new("markovchain", 
+          states=stateNames,
+          transitionMatrix=matrix(c(0.3, 0.2, 0.5,
+                                    0, 0.2, 0.8,
+                                    0, 0, 1),
+                                  byrow=TRUE,nrow=3))
+
+Q3 <- new("markovchain", 
+          states=stateNames, 
+          transitionMatrix=matrix(c(0, 0, 1,
+                                    0, 0, 1,
+                                    0, 0, 1),
+                                  byrow=TRUE, nrow=3))
+
+mcCCRC<-new("markovchainList",markovchains=list(Q0,Q1,Q2,Q3))
+```
+
+
+## Valuation of Cash Flows
+Two kinds of events result in payments: cash flow upon transitions, when payments are made upon transition from one state to another; and cash flows while in states represent payments made due to being in a certain state for a particular time period.
+
+### Example
+
+Suppose a 2-year Accident and Death policy pays 250 per year in case of illness and 1000 in case of death. Suppose transition probabilities to be defined by cimMc matrix, the interest rate to be 5%. Suppose premiums are paid only when the policyholder is healthy, when no benefit is paid. Compute the APV.
+
+Here, the subject is H
+
+```{r}
+initialState<-c(1,0,0)
+attr(initialState, which="name")<-stateNames
+v=1.03^-1
+```
+
+The possible transitions are the following:
+
+```{r}
+250*transitionProbability(cimMc^2, "H","I")*v^2+
+ 1000*transitionProbability(cimMc^2, "H","D")*v^2+
+ 250*transitionProbability(cimMc, "H","I")*v+
+ 250*transitionProbability(cimMc, "H","I")*v+
+ 250*transitionProbability(cimMc, "I","I")*v^2+
+ 250*transitionProbability(cimMc, "H","I")*v+
+ 1000*transitionProbability(cimMc, "I","D")*v^2+
+ 1000*transitionProbability(cimMc, "H","D")*v
+```
+
+
+### Example
+
+Each patient of the CCRC costs 50 when healthy, 200 when ill, 10 when dead. Suppose the interest rate is 3%. Compute the APV of inpatient support using Monte Carlo simulation.
+
+Consider the following function:
+
+```{r}
+ getAPV<-function(mcList,t1="H"){
+
+  lifeStates<-character()
+  
+  t2<-markovchainSequence(n=1,markovchain=mcList@markovchains[[1]],t0=t1) #state during second year
+  
+  t3<-markovchainSequence(n=1,markovchain=mcList@markovchains[[2]],t0=t2) #state during third year
+  
+  t4<-markovchainSequence(n=1,markovchain=mcList@markovchains[[3]],t0=t3) #state during fourth year
+  
+  t5<-markovchainSequence(n=1,markovchain=mcList@markovchains[[4]],t0=t4) #state during fifth year
+  
+  lifeStates<-c(t1,t2,t3,t4,t5)
+  
+  APV<-0
+  
+  v<-1.03^-1
+  
+  for(i in 1:5){
+  
+  value<-ifelse(lifeStates[i]=="H",50, ifelse(lifeStates[i]=="I",200,10))*v^((i-0.5))
+  
+  APV<-APV+value
+  
+  if(lifeStates[i]=="D") break}
+  
+  return(APV)
+}
+```
+
+We can use that function , with 1,000 Monte Carlo simulations,
+
+```{r}
+ simulations<-numeric(1000)
+ set.seed(1)
+ for(i in 1:1000) simulations[i]<-getAPV(mcCCRC)
+mean(simulations)
+```
+
+## APV of Benefits and Reserves
+Benefit premiums and reserves can be computed by applying the Equivalence Principle to any contingent payment situation, that is, equating the Actuarial Present Value of Premiums (APVP) to the Actuarial Present Value of the Benefits (APVB).
+
+### Example
+Suppose a four-state homogeneous Markov model represents the joint mortality of a married couple: a husband and a wife. The states are 1 = husband alive, wife alive; 2 = husband dead, wife alive; 3 = husband alive, wife dead, and 4 = both husband and wife dead. A life insurer sells a 2-year term insurance contract to a married couple who are both age 60. The death benefit of $100 is payable at the end of the year in which the second life dies, if both die within 2 years. Premiums are payable as long as at least one of them is alive and annually in advance. Interest rate i = 5%. Calculate the annual benefit premium.
+
+```{r}
+mc2Lifes<-new("markovchain",  
+              states<-c("1","2","3","4"),
+              transitionMatrix=matrix(c(0.95, 0.02, 0.02, 0.01,
+                                        0.00, 0.90, 0.0, 0.10,
+                                        0.00, 0.00, 0.85, 0.15,
+                                        0.00, 0.00, 0.00, 1.00),
+                                      byrow=TRUE,nrow=4))
+plot(mc2Lifes)
+```
+
+The APVP and APVB are computed as follows, as premiums are paid at the beginning of period unless both subjects are dead.
+
+```{r}
+APVP<-1+(1-transitionProbability(mc2Lifes,"1","4"))*1.05^-1
+
+APVB<-100*(transitionProbability(mc2Lifes,"1","4")*1.05^-1
+      +(transitionProbability(mc2Lifes^2,"1","4")
+      -transitionProbability(mc2Lifes,"1","4"))*1.05^-2)
+ P<-APVB/APVP
+ P
+```
+### Exercise
+Write a code to perform 1,000 simulations of the MC above, use the simulations for finding both APVB and APVP, and thenceforth P. Verify that this value is close to the analytic solution provided.
